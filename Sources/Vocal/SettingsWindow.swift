@@ -8,10 +8,14 @@ import SwiftUI
 final class SettingsWindowController {
     private let dictation: Dictation
     private let replacements = ReplacementsStore()
+    private let galicianDownload = GalicianDownload()
     private var window: NSWindow?
 
     init(dictation: Dictation) {
         self.dictation = dictation
+        galicianDownload.onInstalled = { [dictation] in
+            Task { await dictation.loadGalician() }
+        }
     }
 
     func show(tab index: Int? = nil) {
@@ -20,7 +24,7 @@ final class SettingsWindowController {
         if window == nil {
             let tabs = NSTabViewController()
             tabs.tabStyle = .toolbar
-            tabs.addTabViewItem(tab("General", symbol: "gearshape", GeneralSettings(dictation: dictation).frame(width: 520, height: 300)))
+            tabs.addTabViewItem(tab("General", symbol: "gearshape", GeneralSettings(dictation: dictation, download: galicianDownload).frame(width: 520, height: 420)))
             tabs.addTabViewItem(tab("Replacements", symbol: "character.cursor.ibeam", ReplacementsSettings(store: replacements).frame(width: 520, height: 420)))
             let window = NSWindow(contentViewController: tabs)
             window.styleMask = [.titled, .closable]
@@ -52,6 +56,7 @@ final class SettingsWindowController {
 
 struct GeneralSettings: View {
     @Bindable var dictation: Dictation
+    let download: GalicianDownload
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -68,9 +73,16 @@ struct GeneralSettings: View {
             }
 
             Section {
+                LabeledContent("Galician") { galicianStatus }
+            } footer: {
+                Text("\(galicianHint) with the key for Galician. Its model is a separate \(GalicianModel.sizeText) download, the only time Vocal goes online.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Remove “uh” and “um”", isOn: $dictation.removeFillers)
             } footer: {
-                Text("Takes out uh, um, erm and hmm. Nothing else in what you said is changed.")
+                Text("Takes out uh, um, erm, hmm, eh and hum. Nothing else in what you said is changed.")
                     .foregroundStyle(.secondary)
             }
 
@@ -87,6 +99,44 @@ struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder private var galicianStatus: some View {
+        if dictation.galicianReady {
+            HStack {
+                Text("Installed").foregroundStyle(.secondary)
+                Button("Remove") { Task { await dictation.removeGalician() } }
+            }
+        } else if dictation.galicianLoading {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text("Loading…").foregroundStyle(.secondary)
+            }
+        } else {
+            switch download.phase {
+            case .idle:
+                Button("Download (\(GalicianModel.sizeText))") { download.start() }
+            case .downloading(let fraction):
+                HStack {
+                    ProgressView(value: fraction).frame(width: 140)
+                    Button("Cancel") { download.cancel() }
+                }
+            case .installing:
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Checking and installing…").foregroundStyle(.secondary)
+                }
+            case .failed(let message):
+                VStack(alignment: .trailing) {
+                    Button("Try Again") { download.start() }
+                    Text(message).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var galicianHint: String {
+        dictation.key == .rightOption ? "Hold Control" : "Hold Option or Control"
     }
 }
 

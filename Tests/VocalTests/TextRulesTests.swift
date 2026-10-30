@@ -58,6 +58,11 @@ final class TextRulesTests: XCTestCase {
         XCTAssertEqual(rules.apply(to: "Done. Um, next thing."), "Done. Next thing.")
     }
 
+    func testRemovesGalicianFillers() {
+        let rules = TextRules(removeFillers: true)
+        XCTAssertEqual(rules.apply(to: "Pois, eh, non sei hum se vou"), "Pois, non sei se vou")
+    }
+
     func testKeepsWordsThatContainFillers() {
         let rules = TextRules(removeFillers: true)
         XCTAssertEqual(rules.apply(to: "the umbrella and the hummus"), "the umbrella and the hummus")

@@ -11,7 +11,7 @@ struct TextRules {
     var replacements: [Replacement] = []
     var removeFillers = false
 
-    static let fillers = ["uh", "uhh", "um", "umm", "uhm", "erm", "hmm"]
+    static let fillers = ["uh", "uhh", "um", "umm", "uhm", "erm", "hmm", "eh", "ehm", "hum"]
 
     private static let letterBefore = "(?<![\\p{L}\\p{N}])"
     private static let letterAfter = "(?![\\p{L}\\p{N}])"

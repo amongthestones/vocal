@@ -10,13 +10,15 @@ let package = Package(
         .executable(name: "Vocal", targets: ["Vocal"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.18.0")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.18.0"),
+        .package(url: "https://github.com/argmaxinc/WhisperKit.git", exact: "1.1.1")
     ],
     targets: [
         .executableTarget(
             name: "Vocal",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "WhisperKit", package: "WhisperKit")
             ],
             path: "Sources/Vocal"
         ),

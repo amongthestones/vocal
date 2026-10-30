@@ -9,7 +9,7 @@ final class Dictation {
     enum State: Equatable {
         case loading
         case ready
-        case listening(handsFree: Bool)
+        case listening(handsFree: Bool, galician: Bool)
         case transcribing
         case problem(Problem)
     }
@@ -45,6 +45,9 @@ final class Dictation {
         }
     }
     private(set) var lastText: String?
+    /// Whether the Galician model is loaded; Galician dictation needs it.
+    private(set) var galicianReady = false
+    private(set) var galicianLoading = false
 
     var key: TriggerKey {
         didSet {
@@ -61,6 +64,9 @@ final class Dictation {
 
     @ObservationIgnored private let recorder = Recorder()
     @ObservationIgnored private let transcriber = Transcriber()
+    @ObservationIgnored private let galician = GalicianTranscriber()
+    /// The language of the recording in progress, chosen when it starts.
+    @ObservationIgnored private var recordingGalician = false
     @ObservationIgnored private var keyWatcher: KeyWatcher?
     @ObservationIgnored private var logic = PressLogic()
     @ObservationIgnored private var permissionTimer: Timer?
@@ -105,7 +111,9 @@ final class Dictation {
     /// Asks for one keyboard permission at a time (two system prompts at once
     /// stack up confusingly) and starts the key watcher once both are on.
     private func keyboardReady() -> Bool {
-        if !Permissions.hasInputMonitoring {
+        // The preflight check only updates after a relaunch, but the event tap
+        // itself starts as soon as the switch is on, so try that too.
+        if !Permissions.hasInputMonitoring && keyWatcher?.start() != true {
             if asked.insert(.inputMonitoring).inserted { _ = CGRequestListenEventAccess() }
             state = .problem(.inputMonitoring)
             return false
@@ -135,6 +143,9 @@ final class Dictation {
                 guard self.keyboardReady() else { return }
                 timer.invalidate()
                 self.permissionTimer = nil
+                // The permissions arrived while Vocal was running; a tap made
+                // earlier may be deaf, so make a fresh one.
+                self.keyWatcher?.restart()
                 self.state = .loading
                 Task { await self.loadModel() }
             }
@@ -151,7 +162,32 @@ final class Dictation {
             state = .ready
         } catch {
             state = .problem(.modelFailed(error.localizedDescription))
+            return
         }
+        await loadGalician()
+    }
+
+    /// Galician is optional: without its model, the modifier is ignored.
+    func loadGalician() async {
+        guard !galicianReady, !galicianLoading,
+              FileManager.default.fileExists(atPath: Storage.galicianModel.path) else { return }
+        galicianLoading = true
+        defer { galicianLoading = false }
+        do {
+            try await galician.load(from: Storage.galicianModel)
+            galicianReady = true
+            Storage.appendToLog("galician model ready")
+        } catch {
+            Storage.appendToLog("galician model didn't load: \(error)")
+        }
+    }
+
+    /// Unloads the Galician model and deletes the downloaded copy.
+    func removeGalician() async {
+        galicianReady = false
+        await galician.unload()
+        try? FileManager.default.removeItem(at: Storage.installedModelFolder("nos-turbo-gl"))
+        Storage.appendToLog("galician model removed")
     }
 
     private func handle(_ event: KeyWatcher.Event) {
@@ -192,7 +228,11 @@ final class Dictation {
                     return
                 }
             }
-            state = .listening(handsFree: logic.mode == .handsFree)
+            // Option or Control held with the key means Galician. Checked now,
+            // a beat after the press, so the modifier can come slightly late.
+            let flags = CGEventSource.flagsState(.combinedSessionState)
+            recordingGalician = galicianReady && !flags.intersection(key.galicianModifiers).isEmpty
+            state = .listening(handsFree: logic.mode == .handsFree, galician: recordingGalician)
         case .cancel:
             _ = recorder.stop()
             if case .listening = state { state = .ready }
@@ -209,7 +249,9 @@ final class Dictation {
             Task {
                 let raw: String
                 do {
-                    raw = try await transcriber.transcribe(samples: samples, sampleRate: sampleRate)
+                    raw = recordingGalician
+                        ? try await galician.transcribe(samples: samples, sampleRate: sampleRate)
+                        : try await transcriber.transcribe(samples: samples, sampleRate: sampleRate)
                     Storage.appendToLog("transcript: \(raw.count) characters")
                 } catch {
                     raw = ""

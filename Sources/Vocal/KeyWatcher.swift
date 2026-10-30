@@ -40,6 +40,12 @@ enum TriggerKey: String, CaseIterable {
         }
     }
 
+    /// Held together with this key, these switch dictation to Galician.
+    /// Option is left out when it's the dictation key itself.
+    var galicianModifiers: CGEventFlags {
+        self == .rightOption ? .maskControl : [.maskControl, .maskAlternate]
+    }
+
     /// The flag bit that is set while this exact key is down. The right-hand
     /// bits come from IOKit's NX_DEVICER*KEYMASK and tell right from left.
     var downMask: UInt64 {
@@ -95,6 +101,18 @@ final class KeyWatcher {
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         return true
+    }
+
+    /// Throws away the tap and makes a new one. A tap made before Input
+    /// Monitoring was granted can exist but never receive a key.
+    @discardableResult
+    func restart() -> Bool {
+        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
+        if let tap { CFMachPortInvalidate(tap) }
+        tap = nil
+        runLoopSource = nil
+        isDown = false
+        return start()
     }
 
     private func handle(type: CGEventType, event: CGEvent) {

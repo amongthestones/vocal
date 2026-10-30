@@ -4,11 +4,19 @@ A Mac dictation app: hold a key, talk, let go, and the text lands where the curs
 
 It writes down exactly what you said. There's no AI step that rewrites or "cleans up" your words; the only changes are the ones you set up yourself (replacements, and optionally removing "uh" and "um").
 
-*English and Spanish work today, including Spanish words and place names inside English sentences. Galician is planned.*
+## Languages
+
+Built in, with no setting to change: Vocal works out which of these you're speaking.
+
+> English, Spanish, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Swedish and Ukrainian.
+
+English and Spanish are the ones tested most, including Spanish words and place names inside English sentences. Accuracy varies by language; see the [model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) for each one.
+
+**Galician** is an optional download (1.5 GB) in Settings › General, and you choose it as you speak: hold **Globe with Option or Control**. It uses [Proxecto Nós](https://huggingface.co/proxectonos/whisper-large-v3-turbo-gl-v1.0)'s Galician speech model. It takes about a second after you let go, writes Spanish as Spanish rather than turning it into Galician, and writes numbers as words ("mil cincocentos").
 
 ## Download
 
-Get **Vocal-x.y.z.zip** from [Releases](https://github.com/amongthestones/vocal/releases/latest), unzip it and drag **Vocal** to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app. The speech model is inside it (that's why the download is about 560 MB), so Vocal never needs the internet.
+Get **Vocal-x.y.z.zip** from [Releases](https://github.com/amongthestones/vocal/releases/latest), unzip it and drag **Vocal** to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app. The speech model for the built-in languages is inside it (that's why the download is about 560 MB), so Vocal doesn't need the internet. The one exception is the optional Galician model, downloaded only when you ask for it.
 
 Needs macOS 15 or later on a Mac with Apple Silicon (M1 or newer).
 
@@ -39,6 +47,7 @@ open /Applications/Vocal.app
 ## Using it
 
 - **Hold Globe (fn)**, talk, let go. Recording starts after a beat (0.25 s); the text is pasted where the cursor is.
+- **Hold Globe with Option or Control** for Galician, once its model is downloaded. The menu says "Listening (Galician)…".
 - **Double-press Globe** for hands-free. Press it again to stop, or Esc to cancel.
 - A quick tap never starts Vocal, so Globe keeps its macOS job (switching the keyboard, emoji). Globe with another key (a shortcut) cancels too.
 - The menu bar icon shows the state: waveform (ready), filled waveform circle (listening; macOS adds its own mic indicator), dots (writing it out), triangle (something needs fixing; the menu says what).
@@ -54,7 +63,7 @@ If macOS also acts on Globe after a long hold, set System Settings > Keyboard > 
 
 ### Settings
 
-- **General**: dictation key (Globe, right Option or right Command), remove "uh" and "um" (off by default; plain removal from a fixed list), open at login.
+- **General**: dictation key (Globe, right Option or right Command), the Galician model (download or remove), remove "uh" and "um" (off by default; plain removal of uh, um, erm, hmm, eh and hum), open at login.
 - **Replacements**: a table of what Vocal writes and what you want, for names it can't know ("Coruna" → "Coruña"). Whole words, capitals on the left don't matter, applies to the next dictation. It's saved to `replacements.txt`, which you can also edit by hand (Show File).
 
 <p>
@@ -71,6 +80,7 @@ Everything lives in `~/Library/Application Support/Vocal/`:
 | File | What it is |
 |---|---|
 | `Models/parakeet-ultra/` | The speech model, for builds from source (a downloaded Vocal carries its own) |
+| `Models/nos-turbo-gl/` | The Galician model, once downloaded |
 | `replacements.txt` | Your find-and-replace rules |
 | `history.txt` | Everything you've dictated |
 | `vocal.log` | State changes and errors, never what you said |
@@ -78,6 +88,7 @@ Everything lives in `~/Library/Application Support/Vocal/`:
 ## Troubleshooting
 
 - **Nothing happens when I hold the key.** Open the menu: the first line says what's missing. "Needs Input Monitoring" or "Needs Accessibility" comes with a button to the right page of System Settings. If both switches are on and it still doesn't react, choose Restart Vocal, or quit and open it again.
+- **The switch is on in System Settings, but Vocal still says it needs that permission.** The switch belongs to an older copy of Vocal signed differently (a build from source, say). Select Vocal in that list, remove it with −, then choose Restart Vocal and turn it on again when asked.
 - **It listens, but nothing is pasted.** Check the microphone in System Settings > Sound > Input. On a MacBook with the lid closed, the built-in microphone sends only silence. `vocal.log` (see Files) shows "peak 0.000" when the mic gave silence.
 - **The text went to the wrong place.** Choose Copy Last Dictation and paste it yourself.
 - **Globe also switches the keyboard or opens emoji.** Quick taps go to macOS on purpose. If macOS acts after a long hold too, set System Settings > Keyboard > Press Globe key to: Do Nothing, or pick right Option or right Command in Vocal's Settings.
@@ -96,14 +107,15 @@ Everything lives in `~/Library/Application Support/Vocal/`:
 | `KeyWatcher.swift` | Listen-only event tap: sees the trigger key, never blocks or changes keys |
 | `PressLogic.swift` | Hold, tap, double-press and cancel rules (tested) |
 | `Recorder.swift` | Microphone into memory; only runs while recording |
-| `Transcriber.swift` | Parakeet Ultra through FluidAudio, loaded from disk with `loadLocal`, which never downloads |
+| `Transcriber.swift` | Parakeet Ultra through FluidAudio (`loadLocal`, never downloads), and the Galician model through WhisperKit (loaded from disk with downloading turned off) |
+| `GalicianDownload.swift` | The Galician model download: only on request, checked against a SHA-256 fingerprint before it's installed |
 | `TextRules.swift` | Replacements and filler removal (tested) |
 | `Paster.swift` | Copy, ⌘V, then restore the old clipboard |
 | `SettingsWindow.swift` | The Settings window |
 
 The app icon is drawn by `scripts/make-icon.swift` into `Resources/AppIcon.png`; `package-app.sh` turns it into the `.icns`.
 
-**Network.** Vocal has no network code of its own, and FluidAudio's `loadLocal` reads only from disk. The app isn't sandboxed (an event tap and posting ⌘V need that), so the guarantee comes from the code rather than a sandbox. To check it yourself: `lsof -a -i -p $(pgrep -x Vocal)` should print nothing.
+**Network.** Vocal's only network request is the Galician model download, made when you click Download in Settings; it fetches a zip from this repo's [Galician model release](https://github.com/amongthestones/vocal/releases/tag/galician-model-1) and checks its fingerprint before installing it. Nothing you say or dictate is ever sent. Both speech libraries load their models from disk only. The app isn't sandboxed (an event tap and posting ⌘V need that), so the guarantee comes from the code rather than a sandbox. To check it yourself: `lsof -a -i -p $(pgrep -x Vocal)` should print nothing.
 
 ## Why Parakeet Ultra
 
@@ -111,7 +123,7 @@ Picked by running real dictation through three models side by side. On recording
 
 ## Later
 
-- Galician: none of the tested models support it.
+- Galician: a faster model, if a Galician Parakeet appears; numbers as digits.
 - FluidAudio's vocabulary boosting, if replacements aren't enough.
 - A sound or visual cue when recording starts.
 
@@ -121,3 +133,4 @@ Vocal is MIT licensed (see `LICENSE`).
 
 - Speech recognition by [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0).
 - The model is [Parakeet Ultra](https://huggingface.co/FluidInference/parakeet-ultra-coreml) (CC BY 4.0), Moondream's post-training of NVIDIA's [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3). It isn't in this repository: `install-model.sh` downloads it for builds from source, and release builds include it.
+- Galician is [whisper-large-v3-turbo-gl](https://huggingface.co/proxectonos/whisper-large-v3-turbo-gl-v1.0) by Proxecto Nós (Universidade de Santiago de Compostela), Apache 2.0, converted to Core ML with Argmax's [whisperkittools](https://github.com/argmaxinc/whisperkittools) and run with [WhisperKit](https://github.com/argmaxinc/WhisperKit) (MIT).

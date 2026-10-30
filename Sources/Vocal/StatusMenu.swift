@@ -50,12 +50,17 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
                                range: NSRange(location: 0, length: text.length))
             return text
         }
+        func plain(_ message: String) -> NSAttributedString {
+            NSAttributedString(string: message, attributes: [.font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.secondaryLabelColor])
+        }
         switch dictation.state {
-        case .loading: return withKey("Loading…", "")
+        case .loading: return plain("Loading…")
         case .ready: return withKey("Hold ", " to talk")
-        case .listening(let handsFree): return handsFree ? withKey("Press ", " to stop") : withKey("Listening…", "")
-        case .transcribing: return withKey("Writing…", "")
-        case .problem(let problem): return withKey(problem.message, "")
+        case .listening(let handsFree, let galician):
+            let language = galician ? " (Galician)" : ""
+            return handsFree ? withKey("Press ", " to stop\(language)") : plain("Listening\(language)…")
+        case .transcribing: return plain("Writing…")
+        case .problem(let problem): return plain(problem.message)
         }
     }
 
@@ -72,8 +77,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
                 menu.addItem(action("Open Microphone Settings…", #selector(openPrivacy)))
             case .inputMonitoring:
                 menu.addItem(action("Open Input Monitoring Settings…", #selector(openPrivacy)))
+                // macOS often applies this one only after a relaunch.
+                menu.addItem(action("Restart Vocal", #selector(restart)))
             case .accessibility:
                 menu.addItem(action("Open Accessibility Settings…", #selector(openPrivacy)))
+                menu.addItem(action("Restart Vocal", #selector(restart)))
             case .needsRestart:
                 menu.addItem(action("Restart Vocal", #selector(restart)))
             case .noModel:

@@ -4,12 +4,23 @@ import Foundation
 enum Storage {
     static let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Vocal", isDirectory: true)
-    /// The model installed by scripts/install-model.sh, or else the copy
-    /// bundled inside a release build.
-    static var model: URL {
-        let installed = folder.appendingPathComponent("Models/parakeet-ultra", isDirectory: true)
+    /// Parakeet Ultra, for English and Spanish.
+    static var model: URL { modelFolder("parakeet-ultra") }
+
+    /// Nós's Galician Whisper turbo.
+    static var galicianModel: URL { modelFolder("nos-turbo-gl") }
+
+    /// Where a model is installed in Vocal's own folder.
+    static func installedModelFolder(_ name: String) -> URL {
+        folder.appendingPathComponent("Models/\(name)", isDirectory: true)
+    }
+
+    /// A model installed by the scripts or the Galician download, or else the
+    /// copy bundled inside a release build.
+    private static func modelFolder(_ name: String) -> URL {
+        let installed = installedModelFolder(name)
         if FileManager.default.fileExists(atPath: installed.path) { return installed }
-        return Bundle.main.resourceURL?.appendingPathComponent("Models/parakeet-ultra", isDirectory: true) ?? installed
+        return Bundle.main.resourceURL?.appendingPathComponent("Models/\(name)", isDirectory: true) ?? installed
     }
     static let replacements = folder.appendingPathComponent("replacements.txt")
     static let history = folder.appendingPathComponent("history.txt")
