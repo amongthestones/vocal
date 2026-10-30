@@ -4,7 +4,13 @@ import Foundation
 enum Storage {
     static let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Vocal", isDirectory: true)
-    static let model = folder.appendingPathComponent("Models/parakeet-ultra", isDirectory: true)
+    /// The model installed by scripts/install-model.sh, or else the copy
+    /// bundled inside a release build.
+    static var model: URL {
+        let installed = folder.appendingPathComponent("Models/parakeet-ultra", isDirectory: true)
+        if FileManager.default.fileExists(atPath: installed.path) { return installed }
+        return Bundle.main.resourceURL?.appendingPathComponent("Models/parakeet-ultra", isDirectory: true) ?? installed
+    }
     static let replacements = folder.appendingPathComponent("replacements.txt")
     static let history = folder.appendingPathComponent("history.txt")
 

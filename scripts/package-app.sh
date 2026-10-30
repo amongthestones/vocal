@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Builds Vocal.app and installs it to /Applications. Re-run after code changes.
-# Same approach as Faro's package script.
+# Same approach as Faro's and Canteiro's package scripts.
+#
+# It's signed with your Developer ID when the keychain has one (an Apple
+# Development certificate otherwise), so macOS sees each build as the same app
+# and keeps the microphone, Input Monitoring and Accessibility permissions.
+# With neither it signs ad hoc, and the permissions reset on every build.
+#
+# --release also puts the speech model inside the app, has Apple notarize it,
+# and leaves dist/Vocal-<version>.zip for GitHub Releases. It needs a
+# "Developer ID Application" certificate and notarytool credentials saved once:
+#   xcrun notarytool store-credentials vocal-notary --apple-id <email> --team-id <team>
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +23,12 @@ CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 SOURCE_ICON="$ROOT/Resources/AppIcon.png"
+ENTITLEMENTS="$ROOT/scripts/Vocal.entitlements"
+MODEL="$HOME/Library/Application Support/Vocal/Models/parakeet-ultra"
 INSTALL=1
+RELEASE=0
+SIGN_ID="${VOCAL_SIGN_ID:-}"
+NOTARY_PROFILE="${VOCAL_NOTARY_PROFILE:-vocal-notary}"
 
 VERSION="$(git -C "$ROOT" describe --tags --match 'v*' --abbrev=0 2>/dev/null | sed 's/^v//' || true)"
 VERSION="${VOCAL_VERSION:-${VERSION:-0.1.0}}"
@@ -22,10 +37,12 @@ BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 for arg in "$@"; do
   case "$arg" in
     --no-install) INSTALL=0 ;;
+    --release) RELEASE=1; INSTALL=0 ;;
     -h|--help)
-      echo "Usage: $0 [--no-install]"
+      echo "Usage: $0 [--no-install] [--release]"
       echo "  Builds dist/Vocal.app and copies it to $INSTALL_DIR"
-      echo "  VOCAL_SIGN_IDENTITY overrides the signing certificate."
+      echo "  --release: model inside, Developer ID, notarized, dist/Vocal-<version>.zip; doesn't install."
+      echo "  VOCAL_SIGN_ID and VOCAL_NOTARY_PROFILE pick the certificate and credentials."
       exit 0
       ;;
     *)
@@ -35,7 +52,7 @@ for arg in "$@"; do
   esac
 done
 
-# Converts the square PNG master into AppIcon.icns. Same as Faro's script.
+# Converts the square PNG master into AppIcon.icns.
 build_icns() {
   local src="$1" dest="$2" work iconset size
   work="$(mktemp -d "${TMPDIR:-/tmp}/vocal-icon.XXXXXX")"
@@ -68,6 +85,16 @@ if [[ -f "$SOURCE_ICON" ]]; then
   build_icns "$SOURCE_ICON" "$RESOURCES/AppIcon.icns"
 else
   echo "warning: no Resources/AppIcon.png (swift scripts/make-icon.swift makes it)" >&2
+fi
+
+if [[ "$RELEASE" -eq 1 ]]; then
+  # A downloaded copy has no install script, so the model travels inside the
+  # app and Vocal never needs the network.
+  if [[ ! -d "$MODEL/Encoder.mlmodelc" ]]; then
+    "$ROOT/scripts/install-model.sh"
+  fi
+  mkdir -p "$RESOURCES/Models"
+  cp -R "$MODEL" "$RESOURCES/Models/parakeet-ultra"
 fi
 
 cat > "$CONTENTS/Info.plist" <<EOF
@@ -107,14 +134,44 @@ cat > "$CONTENTS/Info.plist" <<EOF
 </plist>
 EOF
 
-# Sign with a real certificate when there is one. macOS ties the microphone,
-# Input Monitoring and Accessibility permissions to the signature, and an
-# ad-hoc signature changes on every build, so permissions would reset each time.
-IDENTITY="${VOCAL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)}"
-if [[ -n "$IDENTITY" ]]; then
-  # The hardened runtime blocks the microphone unless the entitlement asks for it.
-  codesign --force --sign "$IDENTITY" --options runtime --entitlements "$ROOT/scripts/Vocal.entitlements" --timestamp=none "$APP"
-  echo "Signed with: $IDENTITY"
+if [[ -z "$SIGN_ID" ]]; then
+  SIGN_ID="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+fi
+
+if [[ "$RELEASE" -eq 1 ]]; then
+  if [[ -z "$SIGN_ID" ]]; then
+    echo "error: no Developer ID Application certificate in the keychain" >&2
+    exit 1
+  fi
+  # The hardened runtime, which notarizing requires. It blocks the microphone
+  # unless the entitlement asks for it.
+  codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_ID" "$APP"
+  codesign --verify --strict --verbose=1 "$APP"
+  echo "Signed: $APP with $SIGN_ID"
+
+  ZIP="$DIST/$APP_NAME-$VERSION.zip"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  echo "Notarizing (this usually takes a few minutes)…"
+  xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+  # Attach Apple's ticket to the app so it opens offline too, then zip the
+  # stapled app for release.
+  xcrun stapler staple "$APP"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  spctl --assess --type execute --verbose=2 "$APP"
+  echo "Ready: $ZIP (version $VERSION, build $BUILD_NUMBER, $(du -h "$ZIP" | cut -f1))"
+  exit 0
+fi
+
+if [[ -z "$SIGN_ID" ]]; then
+  SIGN_ID="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)"
+fi
+if [[ -n "$SIGN_ID" ]]; then
+  # The same signature as a release, without the timestamp server, so it
+  # works offline. Not notarized, which only matters on other Macs.
+  codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$SIGN_ID" "$APP"
+  echo "Signed with: $SIGN_ID"
 else
   codesign --force --sign - --timestamp=none "$APP"
   echo "warning: ad-hoc signed; permissions will reset after each rebuild" >&2
