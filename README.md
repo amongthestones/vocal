@@ -46,7 +46,12 @@ On a MacBook with the lid closed, the built-in microphone sends only silence. Pi
 - **General**: dictation key (Globe, right Option or right Command), remove "uh" and "um" (off by default; plain removal from a fixed list), open at login.
 - **Replacements**: a table of what Vocal writes and what you want, for names it can't know ("Coruna" → "Coruña"). Whole words, capitals on the left don't matter, applies to the next dictation. It's saved to `replacements.txt`, which you can also edit by hand (Show File).
 
-`open /Applications/Vocal.app --args --settings 1` opens straight to a Settings tab (0 General, 1 Replacements), for checking the window after changes.
+<p>
+  <img src="docs/settings-general.png" alt="Vocal's General settings: dictation key, remove uh and um, open at login" width="420">
+  <img src="docs/settings-replacements.png" alt="Vocal's Replacements settings: a table of what Vocal writes and what you want" width="420">
+</p>
+
+`open /Applications/Vocal.app --args --settings 1` opens straight to a Settings tab (0 General, 1 Replacements), and `--menu` opens the menu bar menu, for checking them after changes.
 
 ## Files
 

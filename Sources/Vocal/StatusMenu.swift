@@ -110,6 +110,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         settings.show()
     }
 
+    /// Opens the menu without a click, for screenshots.
+    func openMenu() {
+        item.button?.performClick(nil)
+    }
+
     func openSettings(tab index: Int) {
         settings.show(tab: index)
     }

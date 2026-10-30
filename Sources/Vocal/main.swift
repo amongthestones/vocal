@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let next = CommandLine.arguments.dropFirst(flag + 1).first
             statusMenu?.openSettings(tab: next.flatMap(Int.init) ?? 0)
         }
+        // `--menu` opens the menu bar menu once the model is loaded, for screenshots.
+        if CommandLine.arguments.contains("--menu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.statusMenu?.openMenu() }
+        }
     }
 }
 
